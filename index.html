@@ -108,6 +108,11 @@
             transform: translateY(0);
         }
 
+        .btn-submit:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
         .status-message {
             margin-top: 20px;
             padding: 15px;
@@ -115,6 +120,12 @@
             text-align: center;
             font-weight: 600;
             display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .success {
@@ -127,6 +138,12 @@
             background-color: #f8d7da;
             color: #721c24;
             border: 1px solid #f5c6cb;
+        }
+
+        .loading {
+            background-color: #cce7ff;
+            color: #004085;
+            border: 1px solid #b3d9ff;
         }
 
         .form-row {
@@ -175,6 +192,33 @@
             font-size: 0.9rem;
             line-height: 1.4;
         }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #004085;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .debug-info {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #495057;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -186,7 +230,7 @@
 
         <div class="info-box">
             <h3>🔄 Auto-Generated Fields</h3>
-            <p>Serial number and date will be automatically generated when you submit the form.</p>
+            <p>Serial number, date, and cumulative totals will be automatically generated when you submit the form.</p>
         </div>
 
         <form id="salesForm">
@@ -205,27 +249,27 @@
             <!-- User input fields -->
             <div class="form-group">
                 <label for="customerName">Customer Name <span class="required">*</span></label>
-                <input type="text" id="customerName" name="customerName" required>
+                <input type="text" id="customerName" name="customerName" placeholder="Enter customer full name" required>
             </div>
 
             <div class="form-group">
                 <label for="customerPhone">Customer Phone Number <span class="required">*</span></label>
-                <input type="tel" id="customerPhone" name="customerPhone" required pattern="[0-9+\-\s()]{10,15}">
+                <input type="tel" id="customerPhone" name="customerPhone" placeholder="+91-9876543210" required pattern="[0-9+\-\s()]{10,15}">
             </div>
 
             <div class="form-group">
                 <label for="salesPerson">Sales Person Name <span class="required">*</span></label>
-                <input type="text" id="salesPerson" name="salesPerson" required>
+                <input type="text" id="salesPerson" name="salesPerson" placeholder="Enter sales person name" required>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
                     <label for="totalQuantity">Total Quantity <span class="required">*</span></label>
-                    <input type="number" id="totalQuantity" name="totalQuantity" min="1" required>
+                    <input type="number" id="totalQuantity" name="totalQuantity" placeholder="0" min="1" required>
                 </div>
                 <div class="form-group">
-                    <label for="totalAmount">Total Amount ($) <span class="required">*</span></label>
-                    <input type="number" id="totalAmount" name="totalAmount" min="0" step="0.01" required>
+                    <label for="totalAmount">Total Amount (₹) <span class="required">*</span></label>
+                    <input type="number" id="totalAmount" name="totalAmount" placeholder="0.00" min="0" step="0.01" required>
                 </div>
             </div>
 
@@ -234,28 +278,35 @@
             </button>
 
             <div id="statusMessage" class="status-message"></div>
+            <div id="debugInfo" class="debug-info"></div>
         </form>
     </div>
 
     <script>
         // Auto-populate current date
-        document.getElementById('date').value = new Date().toLocaleDateString();
+        document.getElementById('date').value = new Date().toLocaleDateString('en-IN');
 
         // Form submission handler
         document.getElementById('salesForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
             const statusMessage = document.getElementById('statusMessage');
+            const debugInfo = document.getElementById('debugInfo');
             const submitButton = document.querySelector('.btn-submit');
             
             // Show loading state
-            submitButton.textContent = 'Submitting...';
+            submitButton.innerHTML = '<div class="loading-spinner"></div>Submitting...';
             submitButton.disabled = true;
+            
+            // Show loading message
+            statusMessage.innerHTML = '<div class="loading-spinner"></div>Submitting data to Google Sheets...';
+            statusMessage.className = 'status-message loading';
+            statusMessage.style.display = 'block';
             
             // Collect form data
             const formData = {
                 slNo: Date.now(), // Simple auto-increment using timestamp
-                date: new Date().toLocaleDateString(),
+                date: new Date().toLocaleDateString('en-IN'),
                 customerName: document.getElementById('customerName').value,
                 customerPhone: document.getElementById('customerPhone').value,
                 salesPerson: document.getElementById('salesPerson').value,
@@ -267,61 +318,128 @@
             };
 
             try {
-                // Here you would make the actual API call to Google Sheets
-                // For demonstration, we'll simulate the submission
-                await simulateSubmission(formData);
+                // Submit to Google Apps Script with CORS handling
+                const result = await submitToGoogleSheets(formData);
                 
                 // Show success message
-                statusMessage.textContent = 'Data submitted successfully to Google Sheets!';
+                statusMessage.innerHTML = '✅ Data submitted successfully! Row: ' + (result.rowNumber || 'Added');
                 statusMessage.className = 'status-message success';
                 statusMessage.style.display = 'block';
                 
+                // Show debug info
+                debugInfo.textContent = 'Response: ' + JSON.stringify(result, null, 2);
+                debugInfo.style.display = 'block';
+                
                 // Reset form
                 document.getElementById('salesForm').reset();
-                document.getElementById('date').value = new Date().toLocaleDateString();
+                document.getElementById('date').value = new Date().toLocaleDateString('en-IN');
                 
             } catch (error) {
                 // Show error message
-                statusMessage.textContent = 'Error submitting data. Please try again.';
+                statusMessage.innerHTML = '❌ Error: ' + error.message;
                 statusMessage.className = 'status-message error';
                 statusMessage.style.display = 'block';
+                
+                // Show debug info
+                debugInfo.textContent = 'Error details: ' + error.toString();
+                debugInfo.style.display = 'block';
             } finally {
                 // Reset button
-                submitButton.textContent = 'Submit to Google Sheets';
+                submitButton.innerHTML = 'Submit to Google Sheets';
                 submitButton.disabled = false;
                 
-                // Hide status message after 5 seconds
+                // Hide status message after 8 seconds
                 setTimeout(() => {
                     statusMessage.style.display = 'none';
-                }, 5000);
+                    debugInfo.style.display = 'none';
+                }, 8000);
             }
         });
 
-        // Submit data to Google Apps Script
-        async function simulateSubmission(data) {
-            // Your working Google Apps Script URL
+        // Submit data to Google Apps Script with CORS handling
+        async function submitToGoogleSheets(data) {
             const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz9GlDHaiKgvLBuA1A-HhQJ6nWes38eRCmct-CHEv5UusWRjaeLWrfJIuaFI6lTS7c5/exec';
             
-            const response = await fetch(SCRIPT_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data)
+            console.log('Attempting to submit data:', data);
+            
+            try {
+                // Method 1: Try normal fetch first
+                console.log('Trying normal fetch...');
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('Normal fetch successful:', result);
+                    return result;
+                }
+                
+                throw new Error('Normal fetch failed with status: ' + response.status);
+                
+            } catch (error) {
+                console.log('Normal fetch failed, trying JSONP method:', error.message);
+                
+                // Method 2: Use JSONP for better response handling
+                return await submitViaJSONP(data);
+            }
+        }
+
+        // JSONP method to bypass CORS and get responses
+        function submitViaJSONP(data) {
+            return new Promise((resolve, reject) => {
+                console.log('Using JSONP method...');
+                
+                // Create unique callback name
+                const callbackName = 'jsonp_callback_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+                
+                // Create script element for JSONP
+                const script = document.createElement('script');
+                
+                // Set up global callback function
+                window[callbackName] = function(response) {
+                    // Clean up
+                    document.head.removeChild(script);
+                    delete window[callbackName];
+                    
+                    console.log('JSONP Response received:', response);
+                    resolve(response);
+                };
+                
+                // Handle errors
+                script.onerror = function() {
+                    document.head.removeChild(script);
+                    delete window[callbackName];
+                    reject(new Error('JSONP request failed - network error'));
+                };
+                
+                // Build query parameters
+                const params = new URLSearchParams({
+                    ...data,
+                    callback: callbackName
+                });
+                
+                // Set script source (using GET with parameters)
+                script.src = `${SCRIPT_URL.replace('/exec', '/exec')}?${params.toString()}`;
+                
+                console.log('JSONP URL:', script.src);
+                
+                // Add script to DOM to trigger request
+                document.head.appendChild(script);
+                
+                // Timeout after 15 seconds
+                setTimeout(() => {
+                    if (window[callbackName]) {
+                        document.head.removeChild(script);
+                        delete window[callbackName];
+                        reject(new Error('Request timeout - please check your internet connection'));
+                    }
+                }, 15000);
             });
-            
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            
-            const result = await response.json();
-            
-            if (!result.success) {
-                throw new Error(result.message || 'Submission failed');
-            }
-            
-            console.log('Data successfully sent to Google Sheets:', result);
-            return result;
         }
 
         // Real-time validation for phone number
@@ -331,25 +449,32 @@
             
             if (phone && !phoneRegex.test(phone)) {
                 e.target.style.borderColor = '#e74c3c';
+                e.target.style.boxShadow = '0 0 0 3px rgba(231, 76, 60, 0.1)';
             } else {
                 e.target.style.borderColor = '#e1e5e9';
+                e.target.style.boxShadow = 'none';
             }
         });
 
         // Format amount input
-        document.getElementById('totalAmount').addEventListener('input', function(e) {
-            let value = e.target.value;
-            if (value && !isNaN(value)) {
-                // Ensure two decimal places for currency
-                if (value.indexOf('.') === -1) {
-                    // Add decimal places when user stops typing
-                    setTimeout(() => {
-                        if (document.activeElement !== e.target) {
-                            e.target.value = parseFloat(value).toFixed(2);
-                        }
-                    }, 1000);
-                }
+        document.getElementById('totalAmount').addEventListener('blur', function(e) {
+            let value = parseFloat(e.target.value);
+            if (!isNaN(value)) {
+                e.target.value = value.toFixed(2);
             }
+        });
+
+        // Enhanced form validation feedback
+        document.querySelectorAll('input[required]').forEach(input => {
+            input.addEventListener('input', function() {
+                if (this.value.trim() !== '') {
+                    this.style.borderColor = '#28a745';
+                    this.style.boxShadow = '0 0 0 3px rgba(40, 167, 69, 0.1)';
+                } else {
+                    this.style.borderColor = '#e1e5e9';
+                    this.style.boxShadow = 'none';
+                }
+            });
         });
     </script>
 </body>
