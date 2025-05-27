@@ -254,7 +254,7 @@
 
             <div class="form-group">
                 <label for="customerPhone">Customer Phone Number <span class="required">*</span></label>
-                <input type="tel" id="customerPhone" name="customerPhone" placeholder="+91-9876543210" required pattern="[0-9+\-\s()]{10,15}">
+                <input type="tel" id="customerPhone" name="customerPhone" placeholder="+91-9876543210" required pattern="[0-9+\s()-]{10,15}">
             </div>
 
             <div class="form-group">
@@ -362,31 +362,9 @@
             
             console.log('Attempting to submit data:', data);
             
-            try {
-                // Method 1: Try normal fetch first
-                console.log('Trying normal fetch...');
-                const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(data)
-                });
-                
-                if (response.ok) {
-                    const result = await response.json();
-                    console.log('Normal fetch successful:', result);
-                    return result;
-                }
-                
-                throw new Error('Normal fetch failed with status: ' + response.status);
-                
-            } catch (error) {
-                console.log('Normal fetch failed, trying JSONP method:', error.message);
-                
-                // Method 2: Use JSONP for better response handling
-                return await submitViaJSONP(data);
-            }
+            // Skip normal fetch and go directly to JSONP for GitHub Pages
+            console.log('Using JSONP method for GitHub Pages hosting...');
+            return await submitViaJSONP(data);
         }
 
         // JSONP method to bypass CORS and get responses
@@ -403,7 +381,11 @@
                 // Set up global callback function
                 window[callbackName] = function(response) {
                     // Clean up
-                    document.head.removeChild(script);
+                    try {
+                        document.head.removeChild(script);
+                    } catch (e) {
+                        console.log('Script already removed');
+                    }
                     delete window[callbackName];
                     
                     console.log('JSONP Response received:', response);
@@ -412,21 +394,29 @@
                 
                 // Handle errors
                 script.onerror = function() {
-                    document.head.removeChild(script);
+                    try {
+                        document.head.removeChild(script);
+                    } catch (e) {
+                        console.log('Script already removed');
+                    }
                     delete window[callbackName];
                     reject(new Error('JSONP request failed - network error'));
                 };
                 
-                // Build query parameters
-                const params = new URLSearchParams({
-                    ...data,
-                    callback: callbackName
+                // Build query parameters for GET request
+                const params = new URLSearchParams();
+                Object.keys(data).forEach(key => {
+                    params.append(key, data[key]);
                 });
+                params.append('callback', callbackName);
                 
-                // Set script source (using GET with parameters)
-                script.src = `${SCRIPT_URL.replace('/exec', '/exec')}?${params.toString()}`;
+                // Use the same script URL but with GET parameters
+                const scriptUrl = `https://script.google.com/macros/s/AKfycbz9GlDHaiKgvLBuA1A-HhQJ6nWes38eRCmct-CHEv5UusWRjaeLWrfJIuaFI6lTS7c5/exec?${params.toString()}`;
                 
-                console.log('JSONP URL:', script.src);
+                console.log('JSONP URL:', scriptUrl);
+                
+                // Set script source
+                script.src = scriptUrl;
                 
                 // Add script to DOM to trigger request
                 document.head.appendChild(script);
@@ -434,9 +424,13 @@
                 // Timeout after 15 seconds
                 setTimeout(() => {
                     if (window[callbackName]) {
-                        document.head.removeChild(script);
+                        try {
+                            document.head.removeChild(script);
+                        } catch (e) {
+                            console.log('Script already removed');
+                        }
                         delete window[callbackName];
-                        reject(new Error('Request timeout - please check your internet connection'));
+                        reject(new Error('Request timeout - please check your internet connection and try again'));
                     }
                 }, 15000);
             });
@@ -445,7 +439,7 @@
         // Real-time validation for phone number
         document.getElementById('customerPhone').addEventListener('input', function(e) {
             const phone = e.target.value;
-            const phoneRegex = /^[0-9+\-\s()]{10,15}$/;
+            const phoneRegex = /^[0-9+\s()-]{10,15}$/;
             
             if (phone && !phoneRegex.test(phone)) {
                 e.target.style.borderColor = '#e74c3c';
